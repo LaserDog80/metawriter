@@ -55,10 +55,13 @@ def get_handler(path: Path) -> BaseFormatHandler:
     if handler is None:
         raise UnsupportedFormatError(ext)
 
-    # Validate magic bytes
+    # Validate magic bytes (mp4 and mov share ftyp container, treat as compatible)
     detected = BaseFormatHandler.detect_magic(path)
     expected = _EXPECTED_FORMAT.get(ext)
     if detected is not None and expected is not None and detected != expected:
-        raise FormatMismatchError(str(path), expected, detected)
+        compatible = {frozenset(("mp4", "mov"))}
+        pair = frozenset((detected, expected))
+        if pair not in compatible:
+            raise FormatMismatchError(str(path), expected, detected)
 
     return handler

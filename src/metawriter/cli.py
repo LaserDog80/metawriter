@@ -71,7 +71,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.command == "append":
             return _handle_append(args)
-        elif args.command == "read":
+        else:
             return _handle_read(args)
     except MetaWriterError as exc:
         print(f"Error: {exc}", file=sys.stderr)
@@ -79,8 +79,6 @@ def main(argv: list[str] | None = None) -> int:
     except (FileNotFoundError, FileExistsError) as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
-
-    return 0
 
 
 def _handle_append(args: argparse.Namespace) -> int:

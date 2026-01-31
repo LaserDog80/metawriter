@@ -35,11 +35,27 @@ def _escape_xml(text: str) -> str:
     )
 
 
+def _sanitize_xml_name(name: str) -> str:
+    """Sanitize a string into a valid XML element name.
+
+    XML names must start with a letter or underscore. Subsequent characters
+    may include letters, digits, hyphens, underscores, and periods.
+    """
+    import re
+
+    # Replace invalid characters with underscores
+    sanitized = re.sub(r"[^a-zA-Z0-9._-]", "_", name)
+    # Ensure it starts with a letter or underscore
+    if sanitized and not re.match(r"[a-zA-Z_]", sanitized[0]):
+        sanitized = f"_{sanitized}"
+    return sanitized or "_"
+
+
 def _build_xmp(entries: dict[str, str]) -> bytes:
     """Build an XMP packet from a dict of key-value pairs."""
     lines = []
     for key, value in entries.items():
-        safe_key = key.replace(" ", "_")
+        safe_key = _sanitize_xml_name(key)
         lines.append(f"  <mw:{safe_key}>{_escape_xml(value)}</mw:{safe_key}>")
     body = "\n".join(lines) + "\n" if lines else ""
     return _XMP_TEMPLATE.format(entries=body).encode("utf-8")
