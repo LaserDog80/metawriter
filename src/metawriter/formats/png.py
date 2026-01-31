@@ -14,6 +14,9 @@ class PngHandler(BaseFormatHandler):
     def read_metadata(self, path: Path) -> dict[str, str]:
         """Read all tEXt/iTXt/zTXt metadata from a PNG file.
 
+        Only returns text-chunk entries (string values). Non-text metadata
+        like gamma, DPI, and ICC profiles are excluded.
+
         Args:
             path: Path to the PNG file.
 
@@ -21,7 +24,11 @@ class PngHandler(BaseFormatHandler):
             Dict of metadata key-value pairs.
         """
         with Image.open(path) as img:
-            return dict(img.info) if img.info else {}
+            # img.text contains only text chunks; img.info also contains
+            # non-text data (gamma as float, dpi as tuple, etc.)
+            if hasattr(img, "text") and img.text:
+                return {k: str(v) for k, v in img.text.items()}
+            return {}
 
     def write_metadata(
         self,
@@ -37,14 +44,21 @@ class PngHandler(BaseFormatHandler):
             metadata: New key-value entries to append.
         """
         with Image.open(source_path) as img:
-            existing = dict(img.info) if img.info else {}
+            # Read only text chunks from the source
+            existing = {}
+            if hasattr(img, "text") and img.text:
+                existing = dict(img.text)
 
             png_info = PngInfo()
-            # Carry forward existing text chunks
             for key, value in existing.items():
                 png_info.add_text(key, str(value))
-            # Append new entries
             for key, value in metadata.items():
                 png_info.add_text(key, value)
 
-            img.save(str(output_path), pnginfo=png_info)
+            # Preserve ICC profile if present
+            save_kwargs: dict = {"pnginfo": png_info}
+            icc = img.info.get("icc_profile")
+            if icc:
+                save_kwargs["icc_profile"] = icc
+
+            img.save(str(output_path), **save_kwargs)

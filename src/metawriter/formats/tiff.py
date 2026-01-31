@@ -1,6 +1,5 @@
 """TIFF metadata handler using Pillow and piexif."""
 
-import copy
 from pathlib import Path
 
 from PIL import Image

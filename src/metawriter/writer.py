@@ -4,6 +4,7 @@ from pathlib import Path
 
 from .exceptions import MetadataIntegrityError
 from .formats import get_handler
+from .formats.base import BaseFormatHandler
 from .models import entries_to_dict, validate_entries
 
 
@@ -46,7 +47,6 @@ def append_metadata(
     if not source.exists():
         raise FileNotFoundError(f"Source file not found: {source}")
 
-    # Resolve output path
     out = Path(output_path) if output_path else _default_output_path(source)
 
     if not out.parent.exists():
@@ -59,20 +59,15 @@ def append_metadata(
             f"Delete it first or choose a different path."
         )
 
-    # Validate entries and build the flat dict to write
     validated = validate_entries(entries)
     metadata_dict = entries_to_dict(validated)
 
-    # Get format handler (also validates extension + magic bytes)
     handler = get_handler(source)
 
-    # Snapshot existing metadata for post-write verification
     existing_metadata = handler.read_metadata(source)
 
-    # Write new copy with merged metadata
     handler.write_metadata(source, out, metadata_dict)
 
-    # Post-write verification: ensure existing metadata survived
     _verify_integrity(out, existing_metadata, handler)
 
     return str(out)
@@ -81,7 +76,7 @@ def append_metadata(
 def _verify_integrity(
     output_path: Path,
     original_metadata: dict[str, str],
-    handler: object,
+    handler: BaseFormatHandler,
 ) -> None:
     """Re-read the output file and verify pre-existing metadata survived.
 
@@ -93,11 +88,6 @@ def _verify_integrity(
     Raises:
         MetadataIntegrityError: If any original keys are missing.
     """
-    from .formats.base import BaseFormatHandler
-
-    if not isinstance(handler, BaseFormatHandler):
-        return
-
     output_metadata = handler.read_metadata(output_path)
     missing = [
         key for key in original_metadata
