@@ -230,7 +230,8 @@ System dependencies (for video support):
 3. **ffmpeg on system path** — accepted. Video support requires ffmpeg/ffprobe installed. Image support works independently.
 4. **Desktop GUI** — companion UI will use tkinter for a native desktop application.
 5. **`_mwrite` suffix** — all custom metadata keys end with `_mwrite` (e.g. `prompt_mwrite`, `model_mwrite`).
+6. **Extension fields deferred** — version stamping, workflow attribution, and chain-of-custody are out of scope for v1. Will be added in a later phase.
 
 ## Open Questions
 
-6. **Extension fields** — for version stamping and chain-of-custody, should those be part of the core module from the start, or deferred to a later phase?
+None — all resolved.
