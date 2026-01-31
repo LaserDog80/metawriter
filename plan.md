@@ -10,13 +10,14 @@ Build an append-only metadata utility that writes AI-provenance entries (prompts
 
 1. **Append metadata entries** to supported image formats: PNG, JPEG, TIFF, WebP.
 2. **Append metadata entries** to supported video containers: MP4, MOV, MKV.
-3. **Never overwrite, delete, or alter** existing metadata fields — additive only.
-4. **Read existing metadata** before writing, to verify nothing is lost.
+3. **Never modify the original file.** Output a new copy with metadata appended. The source file is always left untouched.
+4. **Read existing metadata** from the source file and carry it forward into the output copy.
 5. **Support structured provenance fields** at minimum: `prompt`, `model`, `provider`, `source_url`, and a `timestamp` (auto-generated on write).
 6. **Allow arbitrary key-value text entries** beyond the built-in provenance fields.
 7. **Validate inputs** — reject empty keys, non-text values, and unsupported file formats with clear errors.
 8. **Expose a Python API** (importable module) as the primary interface.
 9. **Provide a CLI wrapper** for scripting and one-off use.
+10. **Overwrite-in-place mode** deferred to a future version (not in v1).
 
 ---
 
@@ -24,9 +25,9 @@ Build an append-only metadata utility that writes AI-provenance entries (prompts
 
 | Operation | Input | Output |
 |-----------|-------|--------|
-| Append metadata | File path + dict of key-value entries | Modified file (in-place) with new metadata appended |
+| Append metadata | Source file path + dict of key-value entries + optional output path | **New file** (copy of source) with metadata appended. Original untouched. |
 | Read metadata | File path | Dict of all metadata entries currently stored |
-| Verify integrity | File path | Boolean — confirms pre-existing metadata survived a write |
+| Verify integrity | Source file path + output file path | Boolean — confirms pre-existing metadata from source survived into output |
 
 ---
 
@@ -43,7 +44,7 @@ Build an append-only metadata utility that writes AI-provenance entries (prompts
 | **MP4 / MOV** | QuickTime/MPEG-4 metadata atoms | `ffmpeg` via subprocess (ffprobe to read, ffmpeg to write) |
 | **MKV** | Matroska tags | `mkvpropedit` (from mkvtoolnix) or `ffmpeg` via subprocess |
 
-**Namespace convention:** All MetaWriter entries use the prefix `metawriter:` (e.g. `metawriter:prompt`, `metawriter:model`) to avoid collisions with existing metadata fields.
+**Naming convention:** All MetaWriter entries use the suffix `_mwrite` (e.g. `prompt_mwrite`, `model_mwrite`) to avoid collisions with existing metadata fields while keeping keys readable.
 
 ### File structure
 
@@ -52,7 +53,7 @@ metawriter/
 ├── src/
 │   └── metawriter/
 │       ├── __init__.py          # Public API surface
-│       ├── writer.py            # Core MetadataWriter class (append + save)
+│       ├── writer.py            # Core MetadataWriter class (append + output new copy)
 │       ├── reader.py            # Read-only metadata extraction
 │       ├── models.py            # Entry dataclass, validation logic
 │       ├── exceptions.py        # Custom exception hierarchy
@@ -99,18 +100,18 @@ User calls: append_metadata("photo.png", {"prompt": "sunset", "model": "DALL-E 3
   │
   ├─ 1. Detect format from extension + magic bytes
   ├─ 2. Dispatch to format-specific handler
-  ├─ 3. Handler reads ALL existing metadata → snapshot
-  ├─ 4. Validate new entries (non-empty keys, text values, no collisions with protected fields)
+  ├─ 3. Handler reads ALL existing metadata from source → snapshot
+  ├─ 4. Validate new entries (non-empty keys, text values)
   ├─ 5. Merge: existing metadata + new entries (append, never replace)
-  ├─ 6. Write merged metadata back to file
-  └─ 7. Post-write verification: re-read and confirm snapshot fields still present
+  ├─ 6. Write merged result to a NEW output file (original untouched)
+  └─ 7. Post-write verification: re-read output and confirm snapshot fields still present
 ```
 
 ### Key design decisions
 
-- **In-place writes** — modifies the original file. Users should keep backups or use version control on assets. We can optionally support a `backup=True` parameter that creates a `.bak` copy before writing.
-- **Post-write verification** — after every write, re-read the file and assert that all previously-existing metadata keys are still present. Raise `MetadataIntegrityError` if anything is missing.
-- **Duplicate keys** — if the user appends a key that already exists, we append a new entry with a numeric suffix (e.g. `metawriter:prompt`, `metawriter:prompt:2`) rather than overwriting. Formats that don't support duplicate keys use this suffixing strategy.
+- **New-copy output** — the original file is never modified. Every write produces a new output file. Default output path is `<name>_mwrite.<ext>` alongside the original. An overwrite-in-place mode may be added in a future version, but is out of scope for v1.
+- **Post-write verification** — after every write, re-read the output file and assert that all metadata keys from the original source are still present. Raise `MetadataIntegrityError` if anything is missing.
+- **Duplicate keys** — since the original is never touched, running the tool multiple times on the same source is safe (produces a fresh copy each time). If the user runs the tool on an already-processed copy, new entries are appended alongside existing `_mwrite` entries without conflict.
 - **Video format dependency** — video support requires `ffmpeg` and optionally `mkvtoolnix` installed on the system. The module should raise a clear error if these are missing, and image support should work without them.
 
 ### Public API sketch
@@ -118,24 +119,31 @@ User calls: append_metadata("photo.png", {"prompt": "sunset", "model": "DALL-E 3
 ```python
 from metawriter import append_metadata, read_metadata
 
-# Append entries (core use case)
-append_metadata("photo.png", {
+# Append entries — produces "photo_mwrite.png" (original untouched)
+output = append_metadata("photo.png", {
     "prompt": "A sunset over mountains",
     "model": "DALL-E 3",
     "provider": "OpenAI",
     "source_url": "https://example.com/gallery",
 })
+# output == "photo_mwrite.png"
+
+# Custom output path
+output = append_metadata("photo.png", {...}, output_path="tagged/photo.png")
 
 # Read all metadata (including non-MetaWriter fields)
-meta = read_metadata("photo.png")
-# Returns: {"metawriter:prompt": "A sunset...", "exif:Make": "Canon", ...}
+meta = read_metadata("photo_mwrite.png")
+# Returns: {"prompt_mwrite": "A sunset...", "exif:Make": "Canon", ...}
 ```
 
 ### CLI sketch
 
 ```bash
-# Append metadata
+# Append metadata — outputs photo_mwrite.png (original untouched)
 metawriter append photo.png --prompt "A sunset" --model "DALL-E 3"
+
+# Custom output path
+metawriter append photo.png --prompt "A sunset" -o tagged/photo.png
 
 # Append arbitrary key-value
 metawriter append photo.png --set key=value --set another=value2
@@ -143,8 +151,8 @@ metawriter append photo.png --set key=value --set another=value2
 # Read metadata
 metawriter read photo.png
 
-# Read only MetaWriter-namespaced entries
-metawriter read photo.png --only-metawriter
+# Read only MetaWriter entries (keys ending in _mwrite)
+metawriter read photo.png --only-mwrite
 ```
 
 ---
@@ -153,12 +161,13 @@ metawriter read photo.png --only-metawriter
 
 ### Unit tests
 
-1. **Append to empty file** — file with no metadata receives new entries correctly.
-2. **Append preserves existing** — file with pre-existing EXIF/text chunks retains all original fields after append.
-3. **Duplicate key handling** — appending the same key twice produces suffixed entries, not an overwrite.
+1. **Append to empty file** — file with no metadata receives new entries in output copy correctly.
+2. **Append preserves existing** — file with pre-existing EXIF/text chunks retains all original fields in the output copy.
+3. **Original untouched** — source file is byte-identical before and after the operation.
 4. **Validation rejects bad input** — empty key → `ValueError`; non-string value → `TypeError`; unsupported format → `UnsupportedFormatError`.
 5. **Post-write integrity check** — simulated corruption triggers `MetadataIntegrityError`.
-6. **Timestamp auto-populated** — every entry gets a `metawriter:timestamp` field with ISO-8601 time.
+6. **Timestamp auto-populated** — every entry gets a `timestamp_mwrite` field with ISO-8601 time.
+7. **Default output naming** — `photo.png` → `photo_mwrite.png`; custom output path also works.
 
 ### Integration tests (per format)
 
@@ -172,18 +181,18 @@ metawriter read photo.png --only-metawriter
 
 ### Edge cases
 
-14. **Read-only file** — raises `PermissionError` with helpful message.
-15. **File not found** — raises `FileNotFoundError`.
-16. **Extension/content mismatch** — `.png` file that is actually a JPEG → detected via magic bytes, raises `FormatMismatchError`.
-17. **Very large metadata value** — 10 KB text string as a value → handled gracefully per format limits.
-18. **Unicode metadata** — non-ASCII characters in keys and values preserved correctly.
-19. **Concurrent writes** — two processes appending to the same file → documented as unsupported (no file locking in v1).
+15. **Source file not found** — raises `FileNotFoundError`.
+16. **Output directory doesn't exist** — raises `FileNotFoundError` with helpful message.
+17. **Output path already exists** — raises error rather than silently overwriting (user must delete or choose different path).
+18. **Extension/content mismatch** — `.png` file that is actually a JPEG → detected via magic bytes, raises `FormatMismatchError`.
+19. **Very large metadata value** — 10 KB text string as a value → handled gracefully per format limits.
+20. **Unicode metadata** — non-ASCII characters in keys and values preserved correctly.
 
 ### CLI tests
 
-20. **`append` subcommand** — end-to-end: CLI writes entries, `read_metadata()` confirms them.
-21. **`read` subcommand** — outputs JSON to stdout.
-22. **Missing ffmpeg** — video operation without ffmpeg prints actionable error message.
+21. **`append` subcommand** — end-to-end: CLI writes output file, `read_metadata()` confirms entries.
+22. **`read` subcommand** — outputs JSON to stdout.
+23. **Missing ffmpeg** — video operation without ffmpeg prints actionable error message.
 
 ---
 
@@ -210,15 +219,18 @@ System dependencies (for video support):
 | **2 — Remaining images** | JPEG, TIFF, WebP handlers + tests | Full image format coverage |
 | **3 — Video** | MP4/MOV/MKV handler via ffmpeg + tests | Full format coverage |
 | **4 — CLI** | argparse-based CLI + integration tests | `metawriter` command available |
-| **5 — Companion UI** | Separate lightweight viewer/editor (not bound by append-only) | Standalone tool for metadata management |
+| **5 — Companion UI** | Desktop GUI (tkinter) for viewing, adding, editing, and removing metadata (not bound by core module's append-only constraint) | Standalone desktop application |
 
 ---
 
+## Decisions (resolved)
+
+1. **No in-place writes** — output a new copy; original is never touched. Overwrite mode deferred to future version.
+2. **Duplicate keys** — resolved by #1. Running the tool on the same source is always safe since the original is untouched. Re-running on an already-processed copy appends new entries alongside existing ones.
+3. **ffmpeg on system path** — accepted. Video support requires ffmpeg/ffprobe installed. Image support works independently.
+4. **Desktop GUI** — companion UI will use tkinter for a native desktop application.
+5. **`_mwrite` suffix** — all custom metadata keys end with `_mwrite` (e.g. `prompt_mwrite`, `model_mwrite`).
+
 ## Open Questions
 
-1. **Backup behavior** — should `append_metadata` create a `.bak` file by default, or only on opt-in? In-place writes are destructive if something goes wrong.
-2. **Duplicate key strategy** — is numeric suffixing (`prompt:2`, `prompt:3`) acceptable, or would you prefer a different approach (e.g. JSON array values, or reject duplicate keys entirely)?
-3. **Video system dependencies** — is requiring `ffmpeg` on the system path acceptable, or should we bundle/vendor a solution? This also affects CI/CD setup.
-4. **Companion UI scope** — should the viewer be a terminal TUI (e.g. `textual`/`rich`), a desktop GUI (e.g. `tkinter`), or a local web app (e.g. Flask)? This affects the tech stack significantly.
-5. **Namespace prefix** — is `metawriter:` the right prefix for our custom fields, or would you prefer something different (e.g. `ai:`, `provenance:`)?
 6. **Extension fields** — for version stamping and chain-of-custody, should those be part of the core module from the start, or deferred to a later phase?
