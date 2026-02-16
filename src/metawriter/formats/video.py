@@ -42,7 +42,8 @@ class VideoHandler(BaseFormatHandler):
         data = json.loads(result.stdout)
 
         tags = data.get("format", {}).get("tags", {})
-        return {str(k): str(v) for k, v in tags.items()}
+        # Normalise keys to lowercase — ffprobe returns MKV tags in UPPERCASE.
+        return {str(k).lower(): str(v) for k, v in tags.items()}
 
     def write_metadata(
         self,
@@ -63,6 +64,10 @@ class VideoHandler(BaseFormatHandler):
         """
         ffmpeg = _check_tool("ffmpeg")
 
+        # -movflags use_metadata_tags enables custom key names in MP4/MOV.
+        ext = source_path.suffix.lower()
+        movflags = ["-movflags", "use_metadata_tags"] if ext in (".mp4", ".mov") else []
+
         cmd = [
             ffmpeg,
             "-i", str(source_path),
@@ -73,6 +78,7 @@ class VideoHandler(BaseFormatHandler):
         for key, value in metadata.items():
             cmd.extend(["-metadata", f"{key}={value}"])
 
+        cmd.extend(movflags)
         cmd.append(str(output_path))
 
         subprocess.run(

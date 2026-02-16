@@ -5,7 +5,7 @@ self-contained and don't depend on committed binary fixtures.
 """
 
 import shutil
-import struct
+import subprocess
 import sys
 from pathlib import Path
 
@@ -99,78 +99,45 @@ def sample_webp(tmp_path: Path) -> Path:
 
 
 # ---------------------------------------------------------------------------
-# Video fixtures (minimal valid containers)
+# Video fixtures (generated via ffmpeg for valid containers)
 # ---------------------------------------------------------------------------
 
-def _make_minimal_mp4(path: Path) -> Path:
-    """Write a minimal valid MP4 container (ftyp + moov boxes only).
+def _make_video_with_ffmpeg(path: Path, fmt: str = "mp4") -> Path:
+    """Generate a minimal valid video file using ffmpeg.
 
-    This is the smallest technically valid MP4 that ffprobe can read.
+    Creates a 1-frame, 2x2 pixel video that ffmpeg can read and write.
     """
-    ftyp_brand = b"isom"
-    ftyp_body = ftyp_brand + struct.pack(">I", 0) + ftyp_brand
-    ftyp_size = 8 + len(ftyp_body)
-    ftyp_box = struct.pack(">I", ftyp_size) + b"ftyp" + ftyp_body
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        pytest.skip("ffmpeg not available")
 
-    # Minimal moov box with an mvhd atom
-    mvhd_body = b"\x00" * 108  # version 0 mvhd is 108 bytes
-    mvhd_size = 8 + len(mvhd_body)
-    mvhd_box = struct.pack(">I", mvhd_size) + b"mvhd" + mvhd_body
-    moov_size = 8 + len(mvhd_box)
-    moov_box = struct.pack(">I", moov_size) + b"moov" + mvhd_box
-
-    path.write_bytes(ftyp_box + moov_box)
-    return path
-
-
-def _make_minimal_mov(path: Path) -> Path:
-    """Write a minimal MOV container (ftyp brand = qt)."""
-    ftyp_brand = b"qt  "
-    ftyp_body = ftyp_brand + struct.pack(">I", 0) + ftyp_brand
-    ftyp_size = 8 + len(ftyp_body)
-    ftyp_box = struct.pack(">I", ftyp_size) + b"ftyp" + ftyp_body
-
-    mvhd_body = b"\x00" * 108
-    mvhd_size = 8 + len(mvhd_body)
-    mvhd_box = struct.pack(">I", mvhd_size) + b"mvhd" + mvhd_body
-    moov_size = 8 + len(mvhd_box)
-    moov_box = struct.pack(">I", moov_size) + b"moov" + mvhd_box
-
-    path.write_bytes(ftyp_box + moov_box)
-    return path
-
-
-def _make_minimal_mkv(path: Path) -> Path:
-    """Write the MKV/WebM magic bytes header (EBML element)."""
-    # Minimal EBML header that identifies the file as Matroska
-    path.write_bytes(
-        b"\x1a\x45\xdf\xa3"  # EBML element ID
-        b"\x93"               # Size (19 bytes)
-        b"\x42\x86\x81\x01"  # EBMLVersion: 1
-        b"\x42\xf7\x81\x01"  # EBMLReadVersion: 1
-        b"\x42\xf2\x81\x04"  # EBMLMaxIDLength: 4
-        b"\x42\xf3\x81\x08"  # EBMLMaxSizeLength: 8
-        b"\x42\x82\x84\x6d\x61\x74\x72"  # DocType partial
-    )
+    cmd = [
+        ffmpeg, "-y",
+        "-f", "lavfi", "-i", "color=c=black:s=2x2:d=0.1:r=1",
+        "-c:v", "libx264",
+        "-frames:v", "1",
+        str(path),
+    ]
+    subprocess.run(cmd, capture_output=True, text=True, check=True)
     return path
 
 
 @pytest.fixture()
 def sample_mp4(tmp_path: Path) -> Path:
-    """Create a minimal MP4 container."""
-    return _make_minimal_mp4(tmp_path / "sample.mp4")
+    """Create a minimal valid MP4 via ffmpeg."""
+    return _make_video_with_ffmpeg(tmp_path / "sample.mp4")
 
 
 @pytest.fixture()
 def sample_mov(tmp_path: Path) -> Path:
-    """Create a minimal MOV container."""
-    return _make_minimal_mov(tmp_path / "sample.mov")
+    """Create a minimal valid MOV via ffmpeg."""
+    return _make_video_with_ffmpeg(tmp_path / "sample.mov")
 
 
 @pytest.fixture()
 def sample_mkv(tmp_path: Path) -> Path:
-    """Create a minimal MKV container."""
-    return _make_minimal_mkv(tmp_path / "sample.mkv")
+    """Create a minimal valid MKV via ffmpeg."""
+    return _make_video_with_ffmpeg(tmp_path / "sample.mkv", fmt="mkv")
 
 
 # ---------------------------------------------------------------------------
