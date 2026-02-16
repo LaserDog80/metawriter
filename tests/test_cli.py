@@ -5,101 +5,94 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+from PIL import Image
 
 from metawriter.cli import main
 from metawriter.reader import read_metadata
 
 
 # ---------------------------------------------------------------------------
-# append subcommand
+# tag subcommand
 # ---------------------------------------------------------------------------
 
-class TestCliAppend:
-    """Tests for the 'append' CLI subcommand."""
+class TestCliTag:
+    """Tests for the 'tag' CLI subcommand."""
 
-    def test_append_with_prompt(self, sample_png: Path, tmp_path: Path) -> None:
-        out = tmp_path / "out.png"
-        exit_code = main(["append", str(sample_png), "--prompt", "sunset", "-o", str(out)])
-        assert exit_code == 0
-        assert out.exists()
-        meta = read_metadata(str(out))
-        assert meta["prompt_mwrite"] == "sunset"
-
-    def test_append_with_all_provenance_fields(
-        self, sample_png: Path, tmp_path: Path
+    def test_tag_single_file(
+        self, sample_png: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        out = tmp_path / "out.png"
+        exit_code = main(["tag", str(sample_png)])
+        assert exit_code == 0
+        captured = capsys.readouterr()
+        assert "Tagged" in captured.out
+        meta = read_metadata(str(sample_png), only_mwrite=True)
+        assert meta["previous_name_mwrite"] == sample_png.name
+
+    def test_tag_with_model(self, sample_png: Path) -> None:
+        exit_code = main(["tag", str(sample_png), "--model", "DALL-E 3"])
+        assert exit_code == 0
+        meta = read_metadata(str(sample_png), only_mwrite=True)
+        assert meta["model_mwrite"] == "DALL-E 3"
+
+    def test_tag_with_all_optional_fields(self, sample_png: Path) -> None:
         exit_code = main([
-            "append", str(sample_png),
-            "--prompt", "test prompt",
+            "tag", str(sample_png),
             "--model", "DALL-E 3",
-            "--provider", "OpenAI",
             "--source-url", "https://example.com",
-            "-o", str(out),
+            "--prompt", "a sunset",
         ])
         assert exit_code == 0
-        meta = read_metadata(str(out))
-        assert meta["prompt_mwrite"] == "test prompt"
+        meta = read_metadata(str(sample_png), only_mwrite=True)
         assert meta["model_mwrite"] == "DALL-E 3"
-        assert meta["provider_mwrite"] == "OpenAI"
         assert meta["source_url_mwrite"] == "https://example.com"
+        assert meta["prompt_mwrite"] == "a sunset"
 
-    def test_append_with_set_key_value(self, sample_png: Path, tmp_path: Path) -> None:
-        out = tmp_path / "out.png"
+    def test_tag_with_set_key_value(self, sample_png: Path) -> None:
         exit_code = main([
-            "append", str(sample_png),
+            "tag", str(sample_png),
             "--set", "artist=Bob",
             "--set", "license=CC-BY",
-            "-o", str(out),
         ])
         assert exit_code == 0
-        meta = read_metadata(str(out))
+        meta = read_metadata(str(sample_png), only_mwrite=True)
         assert meta["artist_mwrite"] == "Bob"
         assert meta["license_mwrite"] == "CC-BY"
 
-    def test_append_no_entries_returns_error(
+    def test_tag_invalid_set_format(
         self, sample_png: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        exit_code = main(["append", str(sample_png)])
-        assert exit_code == 1
-        captured = capsys.readouterr()
-        assert "No metadata entries" in captured.err
-
-    def test_append_invalid_set_format(
-        self, sample_png: Path, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        exit_code = main(["append", str(sample_png), "--set", "no_equals_sign"])
+        exit_code = main(["tag", str(sample_png), "--set", "no_equals_sign"])
         assert exit_code == 1
         captured = capsys.readouterr()
         assert "KEY=VALUE" in captured.err
 
-    def test_append_default_output_naming(self, sample_png: Path) -> None:
-        exit_code = main(["append", str(sample_png), "--prompt", "test"])
-        expected = sample_png.with_name("sample_mwrite.png")
-        assert exit_code == 0
-        assert expected.exists()
-        # Clean up
-        expected.unlink()
-
-    def test_append_source_not_found(
+    def test_tag_source_not_found(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        exit_code = main(["append", str(tmp_path / "no.png"), "--prompt", "test"])
+        exit_code = main(["tag", str(tmp_path / "no.png")])
         assert exit_code == 1
         captured = capsys.readouterr()
         assert "Error" in captured.err
 
-    def test_append_output_already_exists(
-        self, sample_png: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        out = tmp_path / "existing.png"
-        out.write_bytes(b"data")
-        exit_code = main([
-            "append", str(sample_png), "--prompt", "test", "-o", str(out)
-        ])
-        assert exit_code == 1
+    def test_tag_directory(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+        for name in ("a.png", "b.png"):
+            p = tmp_path / name
+            Image.new("RGB", (4, 4)).save(str(p))
+
+        exit_code = main(["tag", str(tmp_path)])
+        assert exit_code == 0
         captured = capsys.readouterr()
-        assert "Error" in captured.err
+        assert "2 file(s) tagged" in captured.out
+
+    def test_tag_recursive(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+        sub = tmp_path / "sub"
+        sub.mkdir()
+        Image.new("RGB", (4, 4)).save(str(sub / "deep.png"))
+
+        exit_code = main(["tag", str(tmp_path), "--recursive"])
+        assert exit_code == 0
+        captured = capsys.readouterr()
+        assert "1 file(s) tagged" in captured.out
 
 
 # ---------------------------------------------------------------------------
@@ -119,13 +112,12 @@ class TestCliRead:
         assert "Author" in data
 
     def test_read_only_mwrite(
-        self, sample_png: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+        self, sample_png: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        out = tmp_path / "out.png"
-        main(["append", str(sample_png), "--prompt", "test", "-o", str(out)])
-        # Clear captured output from append before calling read
-        capsys.readouterr()
-        exit_code = main(["read", str(out), "--only-mwrite"])
+        # Tag the file first
+        main(["tag", str(sample_png), "--model", "test"])
+        capsys.readouterr()  # clear output
+        exit_code = main(["read", str(sample_png), "--only-mwrite"])
         assert exit_code == 0
         captured = capsys.readouterr()
         data = json.loads(captured.out)
@@ -148,14 +140,11 @@ class TestCliRead:
 class TestCliVideoErrors:
     """Tests that video operations via CLI report clear errors."""
 
-    def test_append_video_without_ffmpeg(
-        self, sample_mp4: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    def test_tag_video_without_ffmpeg(
+        self, sample_mp4: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         with patch("metawriter.formats.video.shutil.which", return_value=None):
-            out = tmp_path / "out.mp4"
-            exit_code = main([
-                "append", str(sample_mp4), "--prompt", "test", "-o", str(out)
-            ])
+            exit_code = main(["tag", str(sample_mp4)])
             assert exit_code == 1
             captured = capsys.readouterr()
             assert "ffmpeg" in captured.err.lower() or "ffprobe" in captured.err.lower()

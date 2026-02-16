@@ -38,6 +38,28 @@ class BaseFormatHandler(ABC):
             metadata: New key-value entries to append.
         """
 
+    def write_metadata_inplace(
+        self,
+        path: Path,
+        metadata: dict[str, str],
+    ) -> None:
+        """Write metadata into a file in-place.
+
+        Uses a temp file and atomic replace to avoid corruption.
+
+        Args:
+            path: File to modify in-place.
+            metadata: Key-value entries to write.
+        """
+        tmp = path.with_name(path.stem + "_mwrite_tmp" + path.suffix)
+        try:
+            self.write_metadata(path, tmp, metadata)
+            tmp.replace(path)
+        except Exception:
+            if tmp.exists():
+                tmp.unlink()
+            raise
+
     @staticmethod
     def detect_magic(path: Path) -> str | None:
         """Return the detected format name based on file magic bytes.

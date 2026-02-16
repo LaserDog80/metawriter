@@ -7,16 +7,16 @@
 
 ## Project Overview
 
-<!-- Update this section when the project scope changes -->
-
-[Project name and one-line description]
+MetaWriter — Preserve file identity through renames. Stamps filenames, download
+timestamps, and AI-provenance metadata into media files in-place. Supports PNG,
+JPEG, TIFF, WebP, MP4, MOV, MKV. Has both CLI and ttkbootstrap GUI.
 
 ---
 
 ## Tech Stack
 
 - **Language:** Python 3.x
-- **Web framework:** [Flask/FastAPI/None—update as needed]
+- **GUI:** ttkbootstrap + tkinterdnd2
 - **Testing:** pytest
 - **Package manager:** pip (use requirements.txt)
 
@@ -35,8 +35,8 @@ pip install -r requirements.txt
 # 3. Run tests
 pytest
 
-# 4. Run local server (if web-based)
-python app.py  # or: flask run / uvicorn main:app
+# 4. Run the GUI
+PYTHONPATH=src python -m metawriter gui
 
 # 5. Before committing
 pytest && git add -A && git commit -m "message"
@@ -56,12 +56,20 @@ pytest && git add -A && git commit -m "message"
 ## File Structure Conventions
 
 ```
-project/
-├── src/              # Main source code
-├── tests/            # Test files (mirror src/ structure)
-├── requirements.txt  # Dependencies
-├── app.py            # Entry point (if web-based)
-└── README.md         # User-facing documentation
+src/metawriter/
+├── __init__.py       # Public API exports
+├── __main__.py       # python -m metawriter entry point
+├── engine.py         # Core tag_file() / tag_files() logic
+├── scanner.py        # File discovery (scan_paths)
+├── birthtime.py      # Filesystem creation date utility
+├── reader.py         # Read metadata from files
+├── writer.py         # Legacy append_metadata (copy-based)
+├── models.py         # MetadataEntry, validation
+├── exceptions.py     # Error hierarchy
+├── xmp.py            # Shared XMP build/parse utilities
+├── cli.py            # CLI (tag/read/gui subcommands)
+├── gui.py            # ttkbootstrap GUI application
+└── formats/          # Per-format handlers (png, jpeg, tiff, webp, video)
 ```
 
 ---

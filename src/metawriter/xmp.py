@@ -1,6 +1,7 @@
-"""XMP build/parse helpers for Nametag.
+"""Shared XMP build/parse utilities for MetaWriter.
 
-Standalone reimplementation of XMP utilities — no imports from metawriter.
+Provides helpers for building and parsing XMP packets using the MetaWriter
+custom namespace (mw:). Used by JPEG, TIFF, and WebP format handlers.
 """
 
 import re
@@ -21,10 +22,10 @@ _XMP_TEMPLATE = (
     '<?xpacket end="w"?>'
 )
 
-_MW_NS = "http://metawriter.dev/ns/1.0/"
+MW_NS = "http://metawriter.dev/ns/1.0/"
 
 
-def _escape_xml(text: str) -> str:
+def escape_xml(text: str) -> str:
     """Escape special XML characters in text."""
     return (
         text.replace("&", "&amp;")
@@ -34,8 +35,12 @@ def _escape_xml(text: str) -> str:
     )
 
 
-def _sanitize_xml_name(name: str) -> str:
-    """Sanitize a string into a valid XML element name."""
+def sanitize_xml_name(name: str) -> str:
+    """Sanitize a string into a valid XML element name.
+
+    XML names must start with a letter or underscore. Subsequent characters
+    may include letters, digits, hyphens, underscores, and periods.
+    """
     sanitized = re.sub(r"[^a-zA-Z0-9._-]", "_", name)
     if sanitized and not re.match(r"[a-zA-Z_]", sanitized[0]):
         sanitized = f"_{sanitized}"
@@ -43,17 +48,31 @@ def _sanitize_xml_name(name: str) -> str:
 
 
 def build_xmp(entries: dict[str, str]) -> bytes:
-    """Build an XMP packet from a dict of key-value pairs."""
+    """Build an XMP packet from a dict of key-value pairs.
+
+    Args:
+        entries: Metadata key-value pairs to embed.
+
+    Returns:
+        UTF-8 encoded XMP packet bytes.
+    """
     lines = []
     for key, value in entries.items():
-        safe_key = _sanitize_xml_name(key)
-        lines.append(f"  <mw:{safe_key}>{_escape_xml(value)}</mw:{safe_key}>")
+        safe_key = sanitize_xml_name(key)
+        lines.append(f"  <mw:{safe_key}>{escape_xml(value)}</mw:{safe_key}>")
     body = "\n".join(lines) + "\n" if lines else ""
     return _XMP_TEMPLATE.format(entries=body).encode("utf-8")
 
 
 def parse_xmp(xmp_bytes: bytes) -> dict[str, str]:
-    """Parse an XMP packet and return MetaWriter (mw:*) entries."""
+    """Parse an XMP packet and return MetaWriter (mw:*) entries.
+
+    Args:
+        xmp_bytes: Raw XMP packet bytes.
+
+    Returns:
+        Dict of metadata key-value pairs from the mw: namespace.
+    """
     result: dict[str, str] = {}
     try:
         root = ET.fromstring(xmp_bytes)
@@ -65,6 +84,6 @@ def parse_xmp(xmp_bytes: bytes) -> dict[str, str]:
         if "{" in tag:
             ns, local = tag.split("}", 1)
             ns = ns.lstrip("{")
-            if ns == _MW_NS and elem.text:
+            if ns == MW_NS and elem.text:
                 result[local] = elem.text
     return result

@@ -4,13 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from metawriter.formats.jpeg import (
-    JpegHandler,
-    _build_xmp,
-    _escape_xml,
-    _parse_xmp,
-    _sanitize_xml_name,
-)
+from metawriter.formats.jpeg import JpegHandler
+from metawriter.xmp import build_xmp, parse_xmp, escape_xml, sanitize_xml_name
 from metawriter.reader import read_metadata
 from metawriter.writer import append_metadata
 
@@ -24,44 +19,44 @@ handler = JpegHandler()
 class TestXmpHelpers:
     """Tests for XMP building and parsing utilities."""
 
-    def test_escape_xml_ampersand(self) -> None:
-        assert _escape_xml("a & b") == "a &amp; b"
+    def testescape_xml_ampersand(self) -> None:
+        assert escape_xml("a & b") == "a &amp; b"
 
-    def test_escape_xml_angle_brackets(self) -> None:
-        assert _escape_xml("<tag>") == "&lt;tag&gt;"
+    def testescape_xml_angle_brackets(self) -> None:
+        assert escape_xml("<tag>") == "&lt;tag&gt;"
 
-    def test_escape_xml_quotes(self) -> None:
-        assert _escape_xml('"hello"') == "&quot;hello&quot;"
+    def testescape_xml_quotes(self) -> None:
+        assert escape_xml('"hello"') == "&quot;hello&quot;"
 
-    def test_sanitize_xml_name_valid(self) -> None:
-        assert _sanitize_xml_name("prompt_mwrite") == "prompt_mwrite"
+    def testsanitize_xml_name_valid(self) -> None:
+        assert sanitize_xml_name("prompt_mwrite") == "prompt_mwrite"
 
-    def test_sanitize_xml_name_starts_with_digit(self) -> None:
-        result = _sanitize_xml_name("1invalid")
+    def testsanitize_xml_name_starts_with_digit(self) -> None:
+        result = sanitize_xml_name("1invalid")
         assert result[0] in ("_", *"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
 
-    def test_sanitize_xml_name_special_chars(self) -> None:
-        result = _sanitize_xml_name("key with spaces!")
+    def testsanitize_xml_name_special_chars(self) -> None:
+        result = sanitize_xml_name("key with spaces!")
         assert " " not in result
         assert "!" not in result
 
-    def test_sanitize_xml_name_empty(self) -> None:
-        result = _sanitize_xml_name("")
+    def testsanitize_xml_name_empty(self) -> None:
+        result = sanitize_xml_name("")
         assert result == "_"
 
     def test_build_and_parse_roundtrip(self) -> None:
         entries = {"prompt_mwrite": "sunset", "model_mwrite": "DALL-E"}
-        xmp = _build_xmp(entries)
-        parsed = _parse_xmp(xmp)
+        xmp = build_xmp(entries)
+        parsed = parse_xmp(xmp)
         assert parsed["prompt_mwrite"] == "sunset"
         assert parsed["model_mwrite"] == "DALL-E"
 
     def test_parse_empty_xmp(self) -> None:
-        result = _parse_xmp(b"")
+        result = parse_xmp(b"")
         assert result == {}
 
     def test_parse_invalid_xmp(self) -> None:
-        result = _parse_xmp(b"not valid xml at all")
+        result = parse_xmp(b"not valid xml at all")
         assert result == {}
 
 

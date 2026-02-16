@@ -5,8 +5,8 @@ from pathlib import Path
 from PIL import Image
 from PIL.TiffImagePlugin import ImageFileDirectory_v2
 
+from ..xmp import build_xmp, parse_xmp
 from .base import BaseFormatHandler
-from .jpeg import _build_xmp, _parse_xmp
 
 # TIFF tag 700 is the standard XMP tag.
 _XMP_TAG = 700
@@ -31,7 +31,7 @@ class TiffHandler(BaseFormatHandler):
                 for tag_id, value in img.tag_v2.items():
                     if isinstance(value, bytes):
                         if tag_id == _XMP_TAG:
-                            result.update(_parse_xmp(value))
+                            result.update(parse_xmp(value))
                             continue
                         try:
                             value = value.decode("utf-8", errors="replace")
@@ -63,10 +63,10 @@ class TiffHandler(BaseFormatHandler):
 
             xmp_raw = tiff_info.get(_XMP_TAG, b"")
             if isinstance(xmp_raw, bytes) and xmp_raw:
-                existing_xmp = _parse_xmp(xmp_raw)
+                existing_xmp = parse_xmp(xmp_raw)
 
             merged = {**existing_xmp, **metadata}
-            xmp_packet = _build_xmp(merged)
+            xmp_packet = build_xmp(merged)
 
             # Build new tiffinfo with the XMP tag set
             new_tiff_info = ImageFileDirectory_v2()

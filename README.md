@@ -1,39 +1,53 @@
-# Project Name
+# MetaWriter
 
-> One-line description of what this project does.
-
-## Status
-
-🚧 Work in progress
+Preserve file identity through renames. Stamps filenames, download timestamps, and AI-provenance metadata into media files so the information survives no matter how many times you rename them.
 
 ## Quick Start
 
 ```bash
-# Clone the repo
-git clone https://github.com/yourusername/project-name.git
-cd project-name
-
 # Set up environment
 python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
+source venv/bin/activate
 pip install -r requirements.txt
 
-# Run the application
-python app.py
+# Tag a file (stamps filename + download timestamp automatically)
+python -m metawriter tag photo.png
+
+# Tag with optional provenance info
+python -m metawriter tag photo.png --model "DALL-E 3" --source-url "https://chatgpt.com" --prompt "a sunset"
+
+# Tag an entire folder
+python -m metawriter tag ./downloads/ --recursive
+
+# Read metadata back
+python -m metawriter read photo.png --only-mwrite
+
+# Launch the GUI
+python -m metawriter gui
 ```
 
-## What It Does
+## What Gets Stamped
 
-[Brief explanation of the project's purpose and main features]
+**Always automatic:**
+- `previous_name_mwrite` — current filename at time of tagging
+- `download_timestamp_mwrite` — file's filesystem creation date
+- `timestamp_mwrite` — when the tagging happened
 
-## Usage
+**Optional (you provide):**
+- `model_mwrite` — AI model name (e.g. "DALL-E 3", "Midjourney v6")
+- `source_url_mwrite` — where the file was downloaded from
+- `prompt_mwrite` — the AI prompt used to generate it
 
-[How to use the application—update after implementation]
+## Supported Formats
+
+PNG, JPEG, TIFF, WebP, MP4, MOV, MKV
+
+Video formats require `ffmpeg` and `ffprobe` on your PATH.
 
 ## Development
 
-See `CLAUDE.md` for development conventions and workflow.
+```bash
+pytest  # Run tests
+```
 
-## Licence
-
-[Your chosen licence]
+See `CLAUDE.md` for development conventions.

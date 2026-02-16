@@ -5,8 +5,8 @@ from pathlib import Path
 import piexif
 from PIL import Image
 
+from ..xmp import build_xmp, parse_xmp
 from .base import BaseFormatHandler
-from .jpeg import _build_xmp, _parse_xmp
 
 
 class WebpHandler(BaseFormatHandler):
@@ -41,7 +41,7 @@ class WebpHandler(BaseFormatHandler):
                                     # Check for embedded XMP in UserComment
                                     if tag == piexif.ExifIFD.UserComment:
                                         if val.startswith(b"XMP:"):
-                                            result.update(_parse_xmp(val[4:]))
+                                            result.update(parse_xmp(val[4:]))
                                             continue
                                     try:
                                         val = val.decode("utf-8", errors="replace")
@@ -54,7 +54,7 @@ class WebpHandler(BaseFormatHandler):
             # Also check for XMP info key
             xmp_data = img.info.get("xmp", b"")
             if isinstance(xmp_data, bytes) and xmp_data:
-                result.update(_parse_xmp(xmp_data))
+                result.update(parse_xmp(xmp_data))
 
         return result
 
@@ -82,7 +82,7 @@ class WebpHandler(BaseFormatHandler):
                         piexif.ExifIFD.UserComment, b""
                     )
                     if isinstance(user_comment, bytes) and user_comment.startswith(b"XMP:"):
-                        existing_xmp = _parse_xmp(user_comment[4:])
+                        existing_xmp = parse_xmp(user_comment[4:])
                 except Exception:
                     exif_dict = {"0th": {}, "Exif": {}, "GPS": {}, "1st": {}}
             else:
@@ -91,10 +91,10 @@ class WebpHandler(BaseFormatHandler):
             # Also check xmp info key
             xmp_raw = img.info.get("xmp", b"")
             if isinstance(xmp_raw, bytes) and xmp_raw:
-                existing_xmp.update(_parse_xmp(xmp_raw))
+                existing_xmp.update(parse_xmp(xmp_raw))
 
             merged = {**existing_xmp, **metadata}
-            xmp_packet = _build_xmp(merged)
+            xmp_packet = build_xmp(merged)
 
             exif_dict.setdefault("Exif", {})
             exif_dict["Exif"][piexif.ExifIFD.UserComment] = b"XMP:" + xmp_packet
