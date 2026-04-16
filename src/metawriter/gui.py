@@ -23,9 +23,16 @@ class MetaWriterApp:
     """Main MetaWriter GUI application."""
 
     def __init__(self) -> None:
-        # Create root window — use TkinterDnD if available for drag-and-drop
+        # Create root window — use TkinterDnD if available for drag-and-drop.
+        # The tkdnd binary may fail to load at runtime (Tcl version mismatch);
+        # fall back to plain tk in that case.
+        global _HAS_DND
         if _HAS_DND:
-            self.root = TkinterDnD.Tk()
+            try:
+                self.root = TkinterDnD.Tk()
+            except (RuntimeError, tk.TclError):
+                _HAS_DND = False
+                self.root = tk.Tk()
         else:
             self.root = tk.Tk()
 
